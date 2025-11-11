@@ -1,0 +1,78 @@
+{
+  "name": "teachwise-mvp",
+  "version": "1.0.0",
+  "description": "TeachWise AI - Teaching Assistant Application",
+  "author": "TeachWise Team",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm:dev-backend\" \"npm:dev-frontend\"",
+    "dev-backend": "cd backend && npm install && node index.js",
+    "dev-frontend": "cd frontend && npm install && npm run dev",
+    "electron": "electron .",
+    "electron-dev": "cross-env NODE_ENV=development electron .",
+    "build-frontend": "cd frontend && npm install && npm run build",
+    "build": "npm run build-frontend && electron-builder",
+    "build-win": "npm run build-frontend && electron-builder --win",
+    "build-mac": "npm run build-frontend && electron-builder --mac",
+    "build-linux": "npm run build-frontend && electron-builder --linux",
+    "postinstall": "cd frontend && npm install && cd ../backend && npm install"
+  },
+  "build": {
+    "appId": "com.teachwise.app",
+    "productName": "TeachWise AI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/.next/standalone/**/*",
+      "frontend/.next/static/**/*",
+      "frontend/public/**/*",
+      "backend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "frontend/.next/standalone",
+        "to": "frontend/.next/standalone"
+      },
+      {
+        "from": "frontend/.next/static",
+        "to": "frontend/.next/static"
+      },
+      {
+        "from": "frontend/public",
+        "to": "frontend/public"
+      }
+    ],
+    "win": {
+      "target": ["nsis"]
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.education"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Education"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  }
+}

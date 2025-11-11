@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear TeachWise User Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        button {
+            background: #e53e3e;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #c53030;
+        }
+        .success {
+            color: #38a169;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .info {
+            background: #e6fffa;
+            border: 1px solid #81e6d9;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗑️ Clear TeachWise User Data</h1>
+        
+        <div class="info">
+            <strong>This will clear:</strong><br>
+            • All stored user sessions<br>
+            • Trial tracking data<br>
+            • Authentication tokens<br>
+            • Account preferences
+        </div>
+        
+        <button onclick="clearAllData()">Clear All User Data</button>
+        <button onclick="clearTrialData()">Clear Trial Data Only</button>
+        
+        <div id="message"></div>
+        
+        <p style="margin-top: 30px; color: #666; font-size: 14px;">
+            Use this tool to reset the application for fresh testing.<br>
+            After clearing data, you can create new accounts with fresh 10-minute trials.
+        </p>
+    </div>
+
+    <script>
+        function clearAllData() {
+            // Clear all localStorage items related to TeachWise
+            localStorage.removeItem('teachwise_user');
+            localStorage.removeItem('teachwise_users');
+            
+            // Clear any other potential keys
+            Object.keys(localStorage).forEach(key => {
+                if (key.includes('teachwise') || key.includes('TeachWise')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            showMessage('✅ All user data cleared successfully!', 'success');
+        }
+        
+        function clearTrialData() {
+            // Clear only user accounts data, keep current session
+            localStorage.removeItem('teachwise_users');
+            showMessage('✅ Trial data cleared! Current session preserved.', 'success');
+        }
+        
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.innerHTML = `<div class="${type}">${text}</div>`;
+            
+            setTimeout(() => {
+                messageEl.innerHTML = '';
+            }, 3000);
+        }
+        
+        // Show current data status
+        window.onload = function() {
+            const currentUser = localStorage.getItem('teachwise_user');
+            const users = localStorage.getItem('teachwise_users');
+            
+            let status = '<h3>Current Data Status:</h3>';
+            status += currentUser ? '• Active session found<br>' : '• No active session<br>';
+            status += users ? `• ${Object.keys(JSON.parse(users)).length} stored accounts<br>` : '• No stored accounts<br>';
+            
+            document.querySelector('.info').innerHTML += status;
+        }
+    </script>
+</body>
+</html>

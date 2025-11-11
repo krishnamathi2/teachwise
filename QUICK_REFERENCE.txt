@@ -1,0 +1,124 @@
+┌─────────────────────────────────────────────────────────────────────┐
+│                  TRIAL RESTRICTIONS - QUICK REFERENCE                │
+└─────────────────────────────────────────────────────────────────────┘
+
+📋 WHAT'S NEW
+═══════════════════════════════════════════════════════════════════════
+✓ One trial per email address (permanent restriction)
+✓ One trial per IP address (device/network restriction)  
+✓ 20-minute time limit enforced automatically
+✓ Trial marked as "used" when credits or time run out
+
+🗄️ DATABASE MIGRATION (REQUIRED)
+═══════════════════════════════════════════════════════════════════════
+Run in Supabase SQL Editor (https://jaelyccdavvorfxpucdb.supabase.co):
+
+-- For existing installations:
+ALTER TABLE user_trials ADD COLUMN IF NOT EXISTS ip_address VARCHAR(100);
+ALTER TABLE user_trials ADD COLUMN IF NOT EXISTS trial_used BOOLEAN DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_user_trials_ip ON user_trials(ip_address);
+
+-- OR use the complete script from:
+backend/migrations/add_ip_to_user_trials.sql
+
+🚀 DEPLOYMENT CHECKLIST
+═══════════════════════════════════════════════════════════════════════
+□ 1. Run database migration in Supabase
+□ 2. Restart backend: cd backend && node index.js
+□ 3. Test new user signup
+□ 4. Verify trial expiration (20 min)
+□ 5. Test same email rejection
+□ 6. Test same IP rejection
+□ 7. Check admin panel displays IP & trial status
+
+🧪 TESTING COMMANDS
+═══════════════════════════════════════════════════════════════════════
+# Test 1: New user (should work)
+curl "http://localhost:3003/trial-status?email=newuser@test.com"
+# Expected: credits: 100, trialExpired: false
+
+# Test 2: Check admin users
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  "http://localhost:3003/admin/users"
+
+# Test 3: Same email retry (should fail after trial used)
+curl "http://localhost:3003/trial-status?email=newuser@test.com"
+# Expected: credits: 0, trialExpired: true (after 20 min or credits exhausted)
+
+⚙️ CONFIGURATION
+═══════════════════════════════════════════════════════════════════════
+File: backend/index.js
+
+CREDITS_CONFIG = {
+  FREE_TRIAL_CREDITS: 100,      // Credits on signup
+  CREDITS_PER_GENERATE: 10,     // Credits per generation  
+  TRIAL_PERIOD_MINUTES: 20,     // Time limit (minutes)
+  PRICE_PER_CREDIT: 1           // ₹1 per credit
+}
+
+📊 ADMIN PANEL CHANGES
+═══════════════════════════════════════════════════════════════════════
+New columns visible in User Management table:
+- 🔒 Trial Used: ✗ USED (red) or ✓ ACTIVE (cyan)
+- 🌐 IP Address: User's IP in monospace font
+
+🔍 KEY FUNCTIONS MODIFIED
+═══════════════════════════════════════════════════════════════════════
+✓ checkIPTrialUsed(ip) - NEW: Check if IP used trial
+✓ getUserFromDB(email) - Returns ipAddress & trialUsed
+✓ saveUserToDB(email, userData) - Saves IP & trial status
+✓ /trial-status endpoint - Validates email & IP
+✓ deductCredit(email) - Marks trial as used
+✓ /admin/users endpoint - Returns new fields
+
+📝 TRIAL EXPIRATION LOGIC
+═══════════════════════════════════════════════════════════════════════
+Trial expires when ANY condition is true:
+
+1. Credits < 10 (insufficient for 1 generation)
+2. Time elapsed > 20 minutes  
+3. trial_used flag = true
+
+When expired → trial_used set to true in database
+
+🛡️ RESTRICTIONS ENFORCED
+═══════════════════════════════════════════════════════════════════════
+✗ Same email, second trial → REJECTED
+✗ Different email, same IP → REJECTED
+✗ Trial expired (time/credits) → REJECTED
+✓ Paid user (paidAmount > 0) → ALLOWED (bypasses restrictions)
+
+💡 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════
+Issue: "IP already used trial" for valid users
+→ Users behind same network/VPN share IP (by design)
+→ Solution: Subscribe to bypass trial restrictions
+
+Issue: Trial not expiring after 20 minutes
+→ Check server system time (date command)
+→ Ensure backend server is running
+
+Issue: Existing users can't access
+→ Run: UPDATE user_trials SET trial_used=false WHERE email='user@email.com'
+
+📚 DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════
+Full details in:
+- TRIAL_RESTRICTIONS.md (migration guide)
+- IMPLEMENTATION_SUMMARY.md (technical details)
+- backend/migrations/ (SQL scripts)
+
+🎯 SUCCESS CRITERIA
+═══════════════════════════════════════════════════════════════════════
+✓ New users get 100 credits for 20 minutes
+✓ Same email can't create second trial
+✓ Same IP can't create multiple trials
+✓ Trial marked as "used" when expired
+✓ Admin panel shows IP and trial status
+✓ Paid users bypass all restrictions
+
+═══════════════════════════════════════════════════════════════════════
+Need help? Check the detailed guides:
+- TRIAL_RESTRICTIONS.md - Step-by-step migration
+- IMPLEMENTATION_SUMMARY.md - Complete technical overview
+═══════════════════════════════════════════════════════════════════════

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Icon Generator</title>
+</head>
+<body>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <div id="icons"></div>
+    
+    <script>
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        
+        function createIcon(size) {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = size;
+            canvas.height = size;
+            
+            // Create gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#6bb6ff');
+            gradient.addColorStop(0.5, '#4da6ff');
+            gradient.addColorStop(1, '#3b9bff');
+            
+            // Draw background circle
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2 - 5, 0, 2 * Math.PI);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Draw book icon
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const scale = size / 200; // Scale based on original 200x200 design
+            
+            // Book base
+            ctx.fillStyle = 'white';
+            ctx.fillRect(centerX - 25*scale, centerY - 20*scale, 50*scale, 35*scale);
+            
+            // Book spine
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fillRect(centerX - 25*scale, centerY - 20*scale, 6*scale, 35*scale);
+            
+            // Pages
+            ctx.fillStyle = 'rgba(59,155,255,0.3)';
+            for(let i = 0; i < 4; i++) {
+                ctx.fillRect(centerX - 19*scale, centerY - 15*scale + i*7*scale, 38*scale, 4*scale);
+            }
+            
+            // Graduation cap
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY - 35*scale, 20*scale, 6*scale, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Cap top
+            ctx.fillRect(centerX - 20*scale, centerY - 38*scale, 40*scale, 6*scale);
+            
+            // Convert to blob and create download link
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `icon-${size}x${size}.png`;
+                link.textContent = `Download ${size}x${size} icon`;
+                link.style.display = 'block';
+                link.style.margin = '10px';
+                document.getElementById('icons').appendChild(link);
+            });
+        }
+        
+        // Generate all sizes
+        sizes.forEach(createIcon);
+    </script>
+</body>
+</html>

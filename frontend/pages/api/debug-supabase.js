@@ -59,15 +59,51 @@ export default async function handler(req, res) {
       debug.tests.simpleSelect = { success: true, rowCount: selectData ? selectData.length : 0 }
     }
 
-    // Test 3: Check table exists
-    debug.tests.tableExists = 'Testing...'
-    const { data: tableData, error: tableError } = await supabase
-      .rpc('get_table_info', { table_name: 'user_trials' })
-      .catch(() => null) // Ignore if function doesn't exist
+    // Test 3: Insert test (simulate trial-status API)
+    debug.tests.insertTest = 'Testing...'
+    try {
+      const testUser = {
+        email: 'debug-test@example.com',
+        registered_at: new Date().toISOString(),
+        trial_used: false,
+        credits: 0,
+        paid_amount: 0,
+        ip_address: 'debug-test'
+      }
 
-    debug.tests.tableExists = tableError ? 
-      { error: tableError.message, note: 'Table might not exist or no access' } : 
-      { success: true, hasRpc: !!tableData }
+      const { data: insertData, error: insertError } = await supabase
+        .from('user_trials')
+        .insert(testUser)
+        .select()
+        .single()
+
+      if (insertError) {
+        debug.tests.insertTest = { error: insertError.message, code: insertError.code }
+      } else {
+        debug.tests.insertTest = { success: true, insertedData: insertData }
+
+        // Clean up test record
+        await supabase
+          .from('user_trials')
+          .delete()
+          .eq('email', 'debug-test@example.com')
+      }
+    } catch (insertErr) {
+      debug.tests.insertTest = { error: insertErr.message }
+    }
+
+    // Test 4: Check specific email query
+    debug.tests.emailQuery = 'Testing...'
+    const { data: emailData, error: emailError } = await supabase
+      .from('user_trials')
+      .select('*')
+      .eq('email', 'test@example.com')
+
+    if (emailError) {
+      debug.tests.emailQuery = { error: emailError.message, code: emailError.code }
+    } else {
+      debug.tests.emailQuery = { success: true, foundRows: emailData ? emailData.length : 0 }
+    }
 
   } catch (error) {
     debug.tests.catchAll = { error: error.message }

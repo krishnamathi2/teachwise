@@ -35,17 +35,18 @@ export default async function handler(req, res) {
   try {
     console.log(`[${new Date().toISOString()}] Checking trial status for: ${email}`)
 
-    // Query user from Supabase
-    const { data: user, error: userError } = await supabase
+    // Query user from Supabase - use select without .single() first
+    const { data: users, error: userError } = await supabase
       .from('user_trials')
       .select('*')
       .eq('email', email)
-      .single()
 
-    if (userError && userError.code !== 'PGRST116') { // PGRST116 = no rows found
+    if (userError) {
+      console.error('Supabase query error:', userError)
       throw userError
     }
 
+    const user = users && users.length > 0 ? users[0] : null
     const now = new Date()
     const trialDurationMs = 20 * 60 * 1000 // 20 minutes
 

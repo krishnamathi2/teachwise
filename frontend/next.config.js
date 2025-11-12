@@ -3,8 +3,7 @@ const webpack = require('webpack')
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'export', // Static export for web deployment
-  trailingSlash: true,
+  // Remove output: 'export' for Vercel deployment
   images: {
     unoptimized: true
   },

@@ -3,7 +3,11 @@ const webpack = require('webpack')
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone', // For Electron production build
+  output: 'export', // Static export for web deployment
+  trailingSlash: true,
+  images: {
+    unoptimized: true
+  },
   webpack: (config, { isServer }) => {
     // Only apply these configurations for client-side builds
     if (!isServer) {

@@ -21,10 +21,12 @@ const app = express();
 const REQ_TIMEOUT_MS = parseInt(process.env.OPENAI_REQ_TIMEOUT_MS || '60000', 10);
 const PORT = process.env.PORT || 3001;
 
-// Enhanced CORS for GoDaddy deployment
+// Enhanced CORS for multiple deployments
 const corsOptions = {
   origin: [
     'https://mpaiapps.godaddysites.com',
+    'https://teachwise-mvp.vercel.app',
+    'https://*.vercel.app',
     'http://localhost:3000',
     'http://localhost:3001'
   ],

@@ -91,13 +91,11 @@ ${errorData.backend?.error || 'Unknown error'}`
       setDiagnostics([...results])
       
       // Test via our API proxy which handles the backend communication
-      const response = await fetch(`/api/trial-status`, {
-        method: 'POST',
+      const response = await fetch(`/api/trial-status?email=diagnostic-test@example.com`, {
+        method: 'GET',
         headers: { 
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email: 'diagnostic-test@example.com' })
+          'Accept': 'application/json'
+        }
       })
       
       if (response.ok || response.status === 400) {

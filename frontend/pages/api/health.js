@@ -47,15 +47,13 @@ export default async function handler(req, res) {
     // Test internal API connectivity by checking if we can make a simple request
     const startTime = Date.now()
     
-    // For Vercel deployment, test the trial-status endpoint which is our main API
-    const response = await fetch(`${backendUrl}/api/trial-status`, {
-      method: 'POST',
+    // Test the trial-status endpoint which is our main API (uses GET method)
+    const response = await fetch(`${backendUrl}/api/trial-status?email=health-check@test.com`, {
+      method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json',
         'User-Agent': 'TeachWise-Health-Check'
       },
-      body: JSON.stringify({ email: 'health-check@test.com' }),
       signal: AbortSignal.timeout(5000) // 5 second timeout
     })
 

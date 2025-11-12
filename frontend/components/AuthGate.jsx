@@ -6,6 +6,7 @@ import SubscriptionModal from './SubscriptionModal'
 import CreditsDisplay from './CreditsDisplay'
 import CreditsPurchaseModal from './CreditsPurchaseModal'
 import ForgotPasswordModal from './ForgotPasswordModal'
+import ConnectionDiagnostic from './ConnectionDiagnostic'
 
 export default function AuthGate({ children }) {
   const router = useRouter()
@@ -18,12 +19,37 @@ export default function AuthGate({ children }) {
   const [error, setError] = useState('')
   const [lowCreditsWarning, setLowCreditsWarning] = useState(false)
   const [lastUserEmail, setLastUserEmail] = useState(null) // Track email after logout
+  const [showDiagnostics, setShowDiagnostics] = useState(false) // Show diagnostic tool
+  const [retryCount, setRetryCount] = useState(0) // Track retry attempts
 
   // Check trial status with better error handling
   const checkTrialStatus = async (userEmail) => {
     try {
       setError('')
-      const response = await fetch(`/api/trial-status?email=${encodeURIComponent(userEmail)}`)
+      
+      // Try multiple endpoints for better compatibility
+      let response
+      try {
+        response = await fetch(`/api/trial-status?email=${encodeURIComponent(userEmail)}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          // Add timeout
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        })
+      } catch (fetchError) {
+        console.warn('Primary API endpoint failed, trying fallback...', fetchError)
+        // Fallback to direct backend URL if available
+        response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3003'}/trial-status?email=${encodeURIComponent(userEmail)}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          }
+        })
+      }
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -44,7 +70,32 @@ export default function AuthGate({ children }) {
       }
     } catch (err) {
       console.error('Error checking trial status:', err)
-      setError('Unable to check trial status. Please refresh the page.')
+      
+      // Provide more specific error messages
+      if (err.name === 'TimeoutError' || err.message.includes('timeout')) {
+        setError('Request timeout. The server might be slow. Please try again.')
+      } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('Network connection issue. Please check your internet connection and try again.')
+      } else if (err.message.includes('500')) {
+        setError('Server error. Our team has been notified. Please try again in a few minutes.')
+      } else if (err.message.includes('404')) {
+        setError('Service temporarily unavailable. Please try again later.')
+      } else {
+        setError('Unable to check trial status. Please refresh the page or try again later.')
+      }
+      
+      // Auto-retry logic for certain errors (max 3 attempts)
+      if (retryCount < 2 && (
+        err.message.includes('Failed to fetch') || 
+        err.message.includes('NetworkError') || 
+        err.name === 'TimeoutError'
+      )) {
+        console.log(`Auto-retrying... Attempt ${retryCount + 1}/3`)
+        setRetryCount(retryCount + 1)
+        setTimeout(() => {
+          checkTrialStatus(userEmail)
+        }, 2000 * (retryCount + 1)) // Exponential backoff: 2s, 4s, 6s
+      }
     }
   }
 
@@ -107,6 +158,27 @@ export default function AuthGate({ children }) {
     setTrialStatus(null)
     setLastUserEmail(null) // Clear stored email on manual sign out
     setError('')
+    setRetryCount(0) // Reset retry count
+  }
+
+  const handleRetry = () => {
+    setError('')
+    setRetryCount(0) // Reset retry count for manual retry
+    setLoading(true)
+    
+    // Try to re-initialize
+    const savedUser = localStorage.getItem('teachwise_user')
+    if (savedUser) {
+      try {
+        const userData = JSON.parse(savedUser)
+        setUser(userData)
+        checkTrialStatus(userData.email)
+      } catch (err) {
+        console.error('Error retrying:', err)
+        setError('Failed to retry. Please refresh the page.')
+      }
+    }
+    setLoading(false)
   }
 
   // Enhanced loading state
@@ -134,12 +206,44 @@ export default function AuthGate({ children }) {
           <div className="error-icon">⚠️</div>
           <h3>Connection Issue</h3>
           <p>{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="retry-button"
-          >
-            Refresh Page
-          </button>
+          <div className="error-actions">
+            <button 
+              onClick={handleRetry} 
+              className="retry-button"
+            >
+              🔄 Retry Connection
+            </button>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="retry-button"
+              style={{ marginLeft: '10px' }}
+            >
+              🔄 Refresh Page
+            </button>
+            <button 
+              onClick={() => setShowDiagnostics(!showDiagnostics)} 
+              className="diagnostic-button"
+              style={{
+                marginLeft: '10px',
+                backgroundColor: showDiagnostics ? '#EF4444' : '#6B7280',
+                color: 'white',
+                border: 'none',
+                padding: '10px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              {showDiagnostics ? '🔧 Hide Diagnostics' : '🔍 Show Diagnostics'}
+            </button>
+          </div>
+          
+          {retryCount > 0 && (
+            <p style={{ fontSize: '14px', color: '#6B7280', marginTop: '10px' }}>
+              Auto-retry attempts: {retryCount}/3
+            </p>
+          )}
+          
+          {showDiagnostics && <ConnectionDiagnostic />}
         </div>
       </div>
     )

@@ -1,4 +1,4 @@
-// Express backend server placeholder
+// Express backend server for TeachWise MVP
 
 require('dotenv').config({ path: __dirname + '/.env' });
 const express = require('express');
@@ -6,6 +6,7 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
 let AbortControllerCtor = global.AbortController;
 try {
   if (!AbortControllerCtor) {
@@ -18,9 +19,24 @@ let Razorpay;
 
 const app = express();
 const REQ_TIMEOUT_MS = parseInt(process.env.OPENAI_REQ_TIMEOUT_MS || '60000', 10);
+const PORT = process.env.PORT || 3001;
+
+// Enhanced CORS for GoDaddy deployment
+const corsOptions = {
+  origin: [
+    'https://mpaiapps.godaddysites.com',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
 
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend/out')));
 
 // Admin authentication middleware
 const authenticateAdmin = (req, res, next) => {
@@ -2753,14 +2769,27 @@ app.post('/admin/update-credits', authenticateAdmin, async (req, res) => {
 
 // ===== END ADMIN PANEL =====
 
+// Server startup for GoDaddy deployment
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/out', 'index.html'));
+});
 
-// Default to 3003 if PORT not provided to avoid common local conflicts (changeable via env)
-const PORT = process.env.PORT || 3003;
-app.listen(PORT, () => console.log(`TeachWise backend running on http://localhost:${PORT}`));
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 TeachWise backend running on port ${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 CORS enabled for: ${corsOptions.origin.join(', ')}`);
+});
+
+module.exports = app;
 
 // --- ADMIN: migration & processed transactions management endpoints ---
 const fs = require('fs');
-const path = require('path');
 const util = require('util');
 const exec = util.promisify(require('child_process').exec);
 

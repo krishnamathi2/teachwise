@@ -36,36 +36,32 @@ export default async function handler(req, res) {
   }
 
   try {
-    // For Vercel deployment, we'll check if we can access our own API routes
-    // Since backend is integrated via API routes, we test internal connectivity
-    
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND || 
-                      'https://teachwise-mvp.vercel.app'
-
-    results.backend.url = backendUrl
-
-    // Test internal API connectivity by checking if we can make a simple request
+    // Test Supabase connectivity instead of external backend
     const startTime = Date.now()
     
-    // Test the trial-status endpoint which is our main API (uses GET method)
-    const response = await fetch(`${backendUrl}/api/trial-status?email=health-check@test.com`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'TeachWise-Health-Check'
-      },
-      signal: AbortSignal.timeout(5000) // 5 second timeout
-    })
+    // Test Supabase connection by making a simple query
+    const { createClient } = require('@supabase/supabase-js')
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    )
+
+    // Test database connectivity
+    const { data, error } = await supabase
+      .from('user_trials')
+      .select('count(*)', { count: 'exact' })
+      .limit(1)
 
     results.backend.responseTime = Date.now() - startTime
+    results.backend.url = process.env.NEXT_PUBLIC_SUPABASE_URL
 
-    if (response.ok || response.status === 400) {
-      // 200 OK or 400 Bad Request both indicate the API is responding
-      results.backend.status = 'ok'
-      results.backend.note = 'API endpoints accessible'
-    } else {
+    if (error) {
       results.backend.status = 'error'
-      results.backend.error = `HTTP ${response.status}: ${response.statusText}`
+      results.backend.error = `Supabase error: ${error.message}`
+    } else {
+      results.backend.status = 'ok'
+      results.backend.note = 'Supabase database accessible'
+      results.backend.data = { connection: 'successful' }
     }
 
   } catch (error) {

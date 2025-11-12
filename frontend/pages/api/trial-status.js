@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     const backendUrl = process.env.BACKEND_URL || 
                       process.env.NEXT_PUBLIC_BACKEND || 
                       process.env.NEXT_PUBLIC_BACKEND_URL || 
-                      'http://localhost:3003'
+                      'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app'
 
     console.log(`[${new Date().toISOString()}] Proxying trial-status request to: ${backendUrl}/trial-status for email: ${email}`)
 
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ 
         error: 'Backend connection refused', 
         details: 'Cannot connect to the backend service. The server may be down.',
-        backendUrl: process.env.NODE_ENV === 'development' ? (process.env.NEXT_PUBLIC_BACKEND || 'http://localhost:3003') : undefined
+        backendUrl: process.env.NODE_ENV === 'development' ? (process.env.NEXT_PUBLIC_BACKEND || 'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app') : undefined
       })
     } else if (error.message.includes('fetch')) {
       return res.status(502).json({ 

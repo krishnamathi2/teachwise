@@ -84,7 +84,7 @@ ${errorData.backend?.error || 'Unknown error'}`
     setDiagnostics([...results])
 
     // Test 2: Check backend URL from environment
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3003'
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app'
     
     try {
       results.push({ test: 'Backend Environment', status: 'testing', message: `Testing ${backendUrl}...` })

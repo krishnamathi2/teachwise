@@ -42,7 +42,7 @@ export default function AuthGate({ children }) {
       } catch (fetchError) {
         console.warn('Primary API endpoint failed, trying fallback...', fetchError)
         // Fallback to direct backend URL if available
-        response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3003'}/trial-status?email=${encodeURIComponent(userEmail)}`, {
+        response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app'}/trial-status?email=${encodeURIComponent(userEmail)}`, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',

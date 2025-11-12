@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     const backendUrl = process.env.BACKEND_URL || 
                       process.env.NEXT_PUBLIC_BACKEND || 
                       process.env.NEXT_PUBLIC_BACKEND_URL || 
-                      'http://localhost:3003'
+                      'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app'
 
     results.backend.url = backendUrl
 

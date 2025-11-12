@@ -49,8 +49,7 @@ export default async function handler(req, res) {
     // Test database connectivity
     const { data, error } = await supabase
       .from('user_trials')
-      .select('count(*)', { count: 'exact' })
-      .limit(1)
+      .select('*', { count: 'exact', head: true })
 
     results.backend.responseTime = Date.now() - startTime
     results.backend.url = process.env.NEXT_PUBLIC_SUPABASE_URL

@@ -51,14 +51,14 @@ export default async function handler(req, res) {
     const trialDurationMs = 20 * 60 * 1000 // 20 minutes
 
     if (!user) {
-      // New user - create trial entry
+      // New user - create trial entry (without ip_address for now)
       const newUser = {
         email,
         registered_at: now.toISOString(),
         trial_used: false,
         credits: 0,
-        paid_amount: 0,
-        ip_address: req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown'
+        paid_amount: 0
+        // ip_address: req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown'
       }
 
       const { data: createdUser, error: createError } = await supabase

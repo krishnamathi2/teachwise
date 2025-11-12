@@ -26,6 +26,7 @@ const corsOptions = {
   origin: [
     'https://mpaiapps.godaddysites.com',
     'https://teachwise-mvp.vercel.app',
+    'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app',
     'https://*.vercel.app',
     'http://localhost:3000',
     'http://localhost:3001'

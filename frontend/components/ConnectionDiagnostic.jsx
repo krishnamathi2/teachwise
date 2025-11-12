@@ -83,23 +83,29 @@ ${errorData.backend?.error || 'Unknown error'}`
 
     setDiagnostics([...results])
 
-    // Test 2: Check backend URL from environment
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app'
+    // Test 2: Check backend API via frontend proxy
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND || 'https://teachwise-mvp.vercel.app'
     
     try {
-      results.push({ test: 'Backend Environment', status: 'testing', message: `Testing ${backendUrl}...` })
+      results.push({ test: 'Backend Environment', status: 'testing', message: `Testing API connectivity...` })
       setDiagnostics([...results])
       
-      const response = await fetch(`${backendUrl}/trial-status?email=test@example.com`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
+      // Test via our API proxy which handles the backend communication
+      const response = await fetch(`/api/trial-status`, {
+        method: 'POST',
+        headers: { 
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: 'diagnostic-test@example.com' })
       })
       
-      if (response.ok) {
+      if (response.ok || response.status === 400) {
+        // Both 200 and 400 indicate the API is working (400 = bad request but API responds)
         results[results.length - 1] = { 
           test: 'Backend Environment', 
           status: 'success', 
-          message: `✅ Backend reachable at ${backendUrl} (Status: ${response.status})` 
+          message: `✅ API endpoints accessible (Status: ${response.status})` 
         }
       } else {
         results[results.length - 1] = { 

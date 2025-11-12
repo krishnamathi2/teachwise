@@ -30,40 +30,41 @@ export default async function handler(req, res) {
       responseTime: null
     },
     environment: {
-      backendUrl: process.env.BACKEND_URL,
-      publicBackend: process.env.NEXT_PUBLIC_BACKEND,
-      publicBackendUrl: process.env.NEXT_PUBLIC_BACKEND_URL,
+      publicBackendUrl: process.env.NEXT_PUBLIC_BACKEND || 'https://teachwise-mvp.vercel.app',
       nodeEnv: process.env.NODE_ENV
     }
   }
 
   try {
-    // Determine backend URL
-    const backendUrl = process.env.BACKEND_URL || 
-                      process.env.NEXT_PUBLIC_BACKEND || 
-                      process.env.NEXT_PUBLIC_BACKEND_URL || 
-                      'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app'
+    // For Vercel deployment, we'll check if we can access our own API routes
+    // Since backend is integrated via API routes, we test internal connectivity
+    
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND || 
+                      'https://teachwise-mvp.vercel.app'
 
     results.backend.url = backendUrl
 
-    // Test backend health
+    // Test internal API connectivity by checking if we can make a simple request
     const startTime = Date.now()
     
-    const response = await fetch(`${backendUrl}/health`, {
-      method: 'GET',
+    // For Vercel deployment, test the trial-status endpoint which is our main API
+    const response = await fetch(`${backendUrl}/api/trial-status`, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'User-Agent': 'TeachWise-Health-Check'
       },
+      body: JSON.stringify({ email: 'health-check@test.com' }),
       signal: AbortSignal.timeout(5000) // 5 second timeout
     })
 
     results.backend.responseTime = Date.now() - startTime
 
-    if (response.ok) {
-      const data = await response.json()
+    if (response.ok || response.status === 400) {
+      // 200 OK or 400 Bad Request both indicate the API is responding
       results.backend.status = 'ok'
-      results.backend.data = data
+      results.backend.note = 'API endpoints accessible'
     } else {
       results.backend.status = 'error'
       results.backend.error = `HTTP ${response.status}: ${response.statusText}`

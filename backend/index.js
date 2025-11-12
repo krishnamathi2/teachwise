@@ -21,10 +21,9 @@ const app = express();
 const REQ_TIMEOUT_MS = parseInt(process.env.OPENAI_REQ_TIMEOUT_MS || '60000', 10);
 const PORT = process.env.PORT || 3001;
 
-// Enhanced CORS for multiple deployments
+// CORS configuration for Vercel deployment
 const corsOptions = {
   origin: [
-    'https://mpaiapps.godaddysites.com',
     'https://teachwise-mvp.vercel.app',
     'https://teachwise-8lpxy8ra-krishnamathi2s-projects.vercel.app',
     'https://*.vercel.app',
@@ -2772,7 +2771,7 @@ app.post('/admin/update-credits', authenticateAdmin, async (req, res) => {
 
 // ===== END ADMIN PANEL =====
 
-// Server startup for GoDaddy deployment
+// Server startup for production deployment
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/out', 'index.html'));
 });

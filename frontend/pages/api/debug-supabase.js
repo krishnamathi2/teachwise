@@ -67,8 +67,8 @@ export default async function handler(req, res) {
         registered_at: new Date().toISOString(),
         trial_used: false,
         credits: 0,
-        paid_amount: 0,
-        ip_address: 'debug-test'
+        paid_amount: 0
+        // ip_address: 'debug-test'  // Commented out due to schema mismatch
       }
 
       const { data: insertData, error: insertError } = await supabase

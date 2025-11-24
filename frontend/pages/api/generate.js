@@ -1,42 +1,30 @@
 // frontend/pages/api/generate.js
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from '@supabase/supabase-js';
 
-const TRIAL_MINUTES = 10;     // trial length
-const TRIAL_CREDITS = 10;     // free credits
+const TRIAL_MINUTES = 10;      // trial duration
+const TRIAL_CREDITS = 10;      // total credits in trial
 const CREDITS_PER_GENERATE = 1;
 
-// Admin Supabase (server-side ONLY)
+// Supabase service client (server-side only!)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// Helper: calculate minutes since a timestamp
 function minutesSince(dateString) {
   if (!dateString) return Infinity;
   const start = new Date(dateString);
   const now = new Date();
-  return (now - start) / 1000 / 60;
+  return (now.getTime() - start.getTime()) / (1000 * 60);
 }
 
 export default async function handler(req, res) {
-  // Health check (OPTIONAL)
-  if (req.method === "GET") {
-    return res.status(200).json({
-      ok: true,
-      message: "Generate API is alive — POST required.",
-    });
-  }
-
-  // Allow only POST for actual generate
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({
-      ok: false,
-      code: "METHOD_NOT_ALLOWED",
-      message: "Use POST.",
-    });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res
+      .status(405)
+      .json({ ok: false, code: 'METHOD_NOT_ALLOWED', message: 'Use POST.' });
   }
 
   const { email, userEmail, prompt, type, meta } = req.body || {};
@@ -45,171 +33,189 @@ export default async function handler(req, res) {
   if (!effectiveEmail) {
     return res.status(400).json({
       ok: false,
-      code: "EMAIL_REQUIRED",
-      message: "Email required.",
+      code: 'EMAIL_REQUIRED',
+      message: 'User email is required to track trial usage.',
     });
   }
 
-  // Env checks
-  if (!process.env.SUPABASE_SERVICE_KEY) {
-    console.error("Missing SUPABASE_SERVICE_KEY");
-    return res.status(500).json({ ok: false, code: "SUPABASE_KEY_MISSING" });
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    console.error('[GENERATE] Supabase env missing');
+    return res.status(500).json({
+      ok: false,
+      code: 'SUPABASE_CONFIG_MISSING',
+      message: 'Server configuration error (Supabase).',
+    });
   }
 
   if (!process.env.OPENAI_API_KEY) {
-    console.error("Missing OPENAI_API_KEY");
-    return res.status(500).json({ ok: false, code: "OPENAI_KEY_MISSING" });
+    console.error('[GENERATE] OPENAI_API_KEY missing');
+    return res.status(500).json({
+      ok: false,
+      code: 'OPENAI_CONFIG_MISSING',
+      message: 'Server configuration error (OpenAI).',
+    });
   }
 
   try {
-    // 1️⃣ Load trial row
-    let { data: trialUser, error: selectErr } = await supabaseAdmin
-      .from("trial_users")
-      .select("*")
-      .eq("email", effectiveEmail)
+    // 1) Load or create trial row
+    let { data: trialRow, error: selectError } = await supabaseAdmin
+      .from('trial_users')
+      .select('*')
+      .eq('email', effectiveEmail)
       .maybeSingle();
 
-    if (selectErr && selectErr.code !== "PGRST116") {
-      console.error("Select error:", selectErr);
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error('[GENERATE] Error loading trial user:', selectError);
       return res.status(500).json({
         ok: false,
-        code: "TRIAL_DB_ERROR",
-        message: "Error loading trial status",
+        code: 'TRIAL_DB_ERROR',
+        message: 'Error checking trial status.',
       });
     }
 
-    // 2️⃣ If user doesn't exist → create trial row
-    if (!trialUser) {
-      const now = new Date().toISOString();
-      const { data: created, error: insertErr } = await supabaseAdmin
-        .from("trial_users")
+    if (!trialRow) {
+      const nowIso = new Date().toISOString();
+      const { data: inserted, error: insertError } = await supabaseAdmin
+        .from('trial_users')
         .insert({
           email: effectiveEmail,
-          trial_start: now,
+          trial_start: nowIso,
           credits_used: 0,
           trial_active: true,
         })
         .select()
         .maybeSingle();
 
-      if (insertErr) {
-        console.error("Insert error:", insertErr);
-        return res
-          .status(500)
-          .json({ ok: false, code: "TRIAL_CREATE_ERROR" });
+      if (insertError) {
+        console.error('[GENERATE] Error creating trial user:', insertError);
+        return res.status(500).json({
+          ok: false,
+          code: 'TRIAL_CREATE_ERROR',
+          message: 'Could not start trial for this user.',
+        });
       }
 
-      trialUser = created;
+      trialRow = inserted;
     }
 
-    // 3️⃣ Check trial conditions
-    const elapsed = minutesSince(trialUser.trial_start);
-    const used = trialUser.credits_used || 0;
-    const remaining = Math.max(TRIAL_CREDITS - used, 0);
+    // 2) Compute trial state
+    const elapsedMinutes = minutesSince(trialRow.trial_start);
+    const creditsUsed = trialRow.credits_used || 0;
+    const remainingCredits = Math.max(TRIAL_CREDITS - creditsUsed, 0);
+    const isExpiredByTime = elapsedMinutes > TRIAL_MINUTES;
+    const isOutOfCredits = remainingCredits < CREDITS_PER_GENERATE;
+    const isActive = trialRow.trial_active !== false;
 
-    const expiredByTime = elapsed >= TRIAL_MINUTES;
-    const noCredits = remaining < CREDITS_PER_GENERATE;
-    const active = trialUser.trial_active !== false;
+    if (!isActive || isExpiredByTime || isOutOfCredits) {
+      if (isActive && (isExpiredByTime || isOutOfCredits)) {
+        await supabaseAdmin
+          .from('trial_users')
+          .update({ trial_active: false })
+          .eq('email', effectiveEmail);
+      }
 
-    if (!active || expiredByTime || noCredits) {
-      // Deactivate if expired
-      await supabaseAdmin
-        .from("trial_users")
-        .update({ trial_active: false })
-        .eq("email", effectiveEmail);
+      const reason = isExpiredByTime
+        ? 'TRIAL_EXPIRED'
+        : isOutOfCredits
+        ? 'TRIAL_NO_CREDITS'
+        : 'TRIAL_INACTIVE';
 
       return res.status(403).json({
         ok: false,
-        code: expiredByTime ? "TRIAL_EXPIRED" : "TRIAL_NO_CREDITS",
+        code: reason,
         message:
-          expiredByTime
-            ? "Your 10-minute trial has expired. Please subscribe."
-            : "Your trial credits are exhausted. Please subscribe.",
+          reason === 'TRIAL_EXPIRED'
+            ? 'Your 10-minute trial has expired. Please subscribe to continue using TeachWise AI.'
+            : 'Your trial credits are exhausted. Please subscribe to continue using TeachWise AI.',
         trial: {
           isTrialUser: true,
-          active: false,
-          minutesUsed: Math.round(elapsed),
-          remainingCredits: remaining,
+          minutesUsed: Math.round(elapsedMinutes),
+          minutesTotal: TRIAL_MINUTES,
+          remainingCredits,
           totalCredits: TRIAL_CREDITS,
+          creditsUsed,
+          active: false,
         },
       });
     }
 
-    // 4️⃣ Charge 1 credit
-    const newUsed = used + CREDITS_PER_GENERATE;
+    // 3) Charge 1 credit
+    const newCreditsUsed = creditsUsed + CREDITS_PER_GENERATE;
 
-    const { error: updateErr } = await supabaseAdmin
-      .from("trial_users")
-      .update({ credits_used: newUsed })
-      .eq("email", effectiveEmail);
+    const { error: updateError } = await supabaseAdmin
+      .from('trial_users')
+      .update({ credits_used: newCreditsUsed })
+      .eq('email', effectiveEmail);
 
-    if (updateErr) {
-      console.error("Update credit error:", updateErr);
+    if (updateError) {
+      console.error('[GENERATE] Error updating credits:', updateError);
+      // we still continue
     }
 
-    // 5️⃣ Build prompt for OpenAI
+    const newRemaining = Math.max(TRIAL_CREDITS - newCreditsUsed, 0);
+
+    // 4) Call OpenAI
     const finalPrompt =
       prompt ||
-      `Generate a teaching resource of type "${type || "lesson-plan"}". Additional details: ${JSON.stringify(
+      `Generate teaching content of type "${type || 'lesson plan'}" based on the following details: ${JSON.stringify(
         meta || {}
       )}`;
 
-    // 6️⃣ Call OpenAI
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: 'gpt-4o-mini',
         messages: [
           {
-            role: "system",
+            role: 'system',
             content:
-              "You are TeachWise AI — an assistant for teachers generating lesson plans, quizzes, and presentations.",
+              'You are TeachWise AI, an assistant that helps teachers generate lesson plans, quizzes, and presentations.',
           },
-          { role: "user", content: finalPrompt },
+          { role: 'user', content: finalPrompt },
         ],
       }),
     });
 
-    if (!aiRes.ok) {
-      const text = await aiRes.text();
-      console.error("OpenAI error:", aiRes.status, text);
+    if (!openaiResponse.ok) {
+      const text = await openaiResponse.text().catch(() => '');
+      console.error('[GENERATE] OpenAI error:', openaiResponse.status, text);
       return res.status(500).json({
         ok: false,
-        code: "OPENAI_ERROR",
-        message: "OpenAI generation failed",
-        details: text,
+        code: 'OPENAI_ERROR',
+        message: 'Error while generating content.',
+        details: text?.slice(0, 500),
       });
     }
 
-    const json = await aiRes.json();
+    const completion = await openaiResponse.json();
     const content =
-      json?.choices?.[0]?.message?.content ||
-      "Unable to generate teaching content.";
+      completion?.choices?.[0]?.message?.content ??
+      'Sorry, I was unable to generate content.';
 
-    // 7️⃣ Return output + trial info
+    // 5) Return success
     return res.status(200).json({
       ok: true,
       content,
       trial: {
         isTrialUser: true,
-        active: true,
-        minutesUsed: Math.round(elapsed),
-        minutesTotal: TRIAL_MINUTES,
-        creditsUsed: newUsed,
-        remainingCredits: Math.max(TRIAL_CREDITS - newUsed, 0),
         totalCredits: TRIAL_CREDITS,
+        remainingCredits: newRemaining,
+        creditsUsed: newCreditsUsed,
+        minutesUsed: Math.round(elapsedMinutes),
+        minutesTotal: TRIAL_MINUTES,
+        active: true,
       },
     });
   } catch (err) {
-    console.error("Unexpected error:", err);
+    console.error('[GENERATE] Unexpected error:', err);
     return res.status(500).json({
       ok: false,
-      code: "INTERNAL_ERROR",
-      message: "Internal server error",
+      code: 'INTERNAL_ERROR',
+      message: 'Unexpected error in generate endpoint.',
     });
   }
 }

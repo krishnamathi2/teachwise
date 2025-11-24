@@ -2,15 +2,27 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const TRIAL_MINUTES = 10;      // trial duration
+const TRIAL_MINUTES = 10;      // trial duration in minutes
 const TRIAL_CREDITS = 10;      // total credits in trial
 const CREDITS_PER_GENERATE = 1;
 
-// Create a Supabase *service* client (server-side only)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+// Lazy-created Supabase *service* client (server-side only)
+let supabaseAdmin = null;
+
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url || !serviceKey) {
+    throw new Error('Supabase env vars missing');
+  }
+
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient(url, serviceKey);
+  }
+
+  return supabaseAdmin;
+}
 
 /**
  * Helper: compute diff in minutes between now and a timestamp
@@ -23,6 +35,7 @@ function minutesSince(dateString) {
 }
 
 export default async function handler(req, res) {
+  // Only allow POST
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res
@@ -32,10 +45,10 @@ export default async function handler(req, res) {
 
   const {
     email,
-    userEmail,
+    userEmail,  // some parts of the frontend might send userEmail instead
     prompt,
-    type,         // e.g. "lesson-plan", "quiz", "presentation"
-    meta,         // any extra data your frontend sends
+    type,       // e.g. "lesson-plan", "quiz", "presentation"
+    meta,       // extra data from the UI (subject, grade, etc.)
   } = req.body || {};
 
   const effectiveEmail = email || userEmail;
@@ -48,15 +61,6 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-    console.error('[GENERATE] Supabase env missing');
-    return res.status(500).json({
-      ok: false,
-      code: 'SUPABASE_CONFIG_MISSING',
-      message: 'Server configuration error (Supabase).',
-    });
-  }
-
   if (!process.env.OPENAI_API_KEY) {
     console.error('[GENERATE] OPENAI_API_KEY missing');
     return res.status(500).json({
@@ -66,9 +70,21 @@ export default async function handler(req, res) {
     });
   }
 
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch (e) {
+    console.error('[GENERATE] Supabase config error:', e.message);
+    return res.status(500).json({
+      ok: false,
+      code: 'SUPABASE_CONFIG_MISSING',
+      message: 'Server configuration error (Supabase).',
+    });
+  }
+
   try {
     // 1️⃣ Load or create trial user row
-    let { data: trialRow, error: selectError } = await supabaseAdmin
+    let { data: trialRow, error: selectError } = await supabase
       .from('trial_users')
       .select('*')
       .eq('email', effectiveEmail)
@@ -86,7 +102,7 @@ export default async function handler(req, res) {
     if (!trialRow) {
       // First time user → create trial row
       const nowIso = new Date().toISOString();
-      const { data: inserted, error: insertError } = await supabaseAdmin
+      const { data: inserted, error: insertError } = await supabase
         .from('trial_users')
         .insert({
           email: effectiveEmail,
@@ -121,7 +137,7 @@ export default async function handler(req, res) {
     if (!isActive || isExpiredByTime || isOutOfCredits) {
       // mark trial as inactive if needed
       if (isActive && (isExpiredByTime || isOutOfCredits)) {
-        await supabaseAdmin
+        await supabase
           .from('trial_users')
           .update({ trial_active: false })
           .eq('email', effectiveEmail);
@@ -143,7 +159,9 @@ export default async function handler(req, res) {
         trial: {
           isTrialUser: true,
           minutesUsed: Math.round(elapsedMinutes),
+          minutesTotal: TRIAL_MINUTES,
           remainingCredits,
+          creditsUsed,
           totalCredits: TRIAL_CREDITS,
           active: false,
         },
@@ -153,7 +171,7 @@ export default async function handler(req, res) {
     // 3️⃣ Charge 1 credit for this generate call (optimistic update)
     const newCreditsUsed = creditsUsed + CREDITS_PER_GENERATE;
 
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await supabase
       .from('trial_users')
       .update({
         credits_used: newCreditsUsed,
@@ -168,31 +186,33 @@ export default async function handler(req, res) {
     const newRemaining = Math.max(TRIAL_CREDITS - newCreditsUsed, 0);
 
     // 4️⃣ Call OpenAI to actually generate content
-    //    Keep this simple and generic so it works with your existing UI.
     const finalPrompt =
       prompt ||
       `Generate teaching content of type "${type || 'lesson plan'}" based on the following details: ${JSON.stringify(
         meta || {}
       )}`;
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are TeachWise AI, an assistant that helps teachers generate lesson plans, quizzes, and presentations.',
-          },
-          { role: 'user', content: finalPrompt },
-        ],
-      }),
-    });
+    const openaiResponse = await fetch(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are TeachWise AI, an assistant that helps teachers generate lesson plans, quizzes, and presentations.',
+            },
+            { role: 'user', content: finalPrompt },
+          ],
+        }),
+      }
+    );
 
     if (!openaiResponse.ok) {
       const text = await openaiResponse.text().catch(() => '');

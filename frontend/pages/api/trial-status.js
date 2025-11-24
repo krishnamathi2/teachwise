@@ -1,30 +1,14 @@
 // frontend/pages/api/trial-status.js
 
-import { createClient } from '@supabase/supabase-js';
+const DEFAULT_BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  'http://localhost:3001';
 
-const TRIAL_MINUTES = 10;
-const TRIAL_CREDITS = 10;
+const TRIAL_MINUTES_FALLBACK = 10;
+const TRIAL_CREDITS_FALLBACK = 10;
 
-/**
- * Helper: get Supabase client using service key
- */
-function getSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!url || !serviceKey) {
-    console.warn('[trial-status] Missing Supabase env vars');
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false }
-  });
-}
-
-/**
- * Helper: normalize email (string or null)
- */
 function getEmailFromRequest(req) {
   // 1) From JSON body (POST)
   if (req.body && typeof req.body.email === 'string') {
@@ -56,7 +40,8 @@ function buildResponse({
   trialExpiresAt = null,
   minutesLeft = 0,
   reason = null,
-  isSubscribed = false
+  isSubscribed = false,
+  totalTrialCredits = null
 }) {
   return {
     ok,
@@ -65,8 +50,8 @@ function buildResponse({
     creditsUsed,
     trialExpiresAt, // ISO string or null
     minutesLeft,
-    trialMinutes: TRIAL_MINUTES,
-    totalTrialCredits: TRIAL_CREDITS,
+    trialMinutes: TRIAL_MINUTES_FALLBACK,
+    totalTrialCredits: totalTrialCredits ?? TRIAL_CREDITS_FALLBACK,
     credits: creditsRemaining,
     creditsLeft: creditsRemaining,
     isSubscribed,
@@ -106,113 +91,63 @@ export default async function handler(req, res) {
 
   console.log(`[trial-status] Checking trial status for: ${email}`);
 
-  const supabase = getSupabaseClient();
-
-  // If Supabase is not configured, fall back to a fake "unlimited" trial
-  if (!supabase) {
-    console.warn('[trial-status] Supabase not configured – returning fallback trial status');
-    return res.status(200).json(
-      buildResponse({
-        ok: true,
-        trialActive: true,
-        creditsRemaining: TRIAL_CREDITS,
-        creditsUsed: 0,
-        trialExpiresAt: null,
-        minutesLeft: TRIAL_MINUTES,
-        reason: 'FALLBACK_NO_SUPABASE'
-      })
-    );
-  }
-
   try {
-    // === 1. Load (or create) trial row ===
-    // ASSUMPTION: table name & columns – change to match your DB:
-    // table: trial_users
-    // columns: email (text, PK/unique), trial_started_at (timestamptz), credits_used (int)
-    let { data: trialRow, error: selectError } = await supabase
-      .from('trial_users')
-      .select('*')
-      .eq('email', email)
-      .maybeSingle();
+    const backendUrl = new URL('/trial-status', DEFAULT_BACKEND_URL);
+    backendUrl.searchParams.set('email', email);
 
-    if (selectError && selectError.code !== 'PGRST116') {
-      // PGRST116 = "Results contain 0 rows" – that's fine
-      console.error('[trial-status] Error loading trial row:', selectError);
-    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const now = new Date();
+    const response = await fetch(backendUrl.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'TeachWise-Frontend-TrialProxy'
+      },
+      signal: controller.signal
+    });
 
-    // If no row exists yet, create one (start trial now)
-    if (!trialRow) {
-      const trialStartedAt = now.toISOString();
-      const { data: inserted, error: insertError } = await supabase
-        .from('trial_users')
-        .insert({
-          email,
-          trial_started_at: trialStartedAt,
-          credits_used: 0
-        })
-        .select('*')
-        .single();
+    clearTimeout(timeout);
 
-      if (insertError) {
-        console.error('[trial-status] Error creating trial row:', insertError);
-        // Still respond gracefully
-        return res.status(200).json(
-          buildResponse({
-            ok: false,
-            trialActive: false,
-            minutesLeft: 0,
-            reason: 'DB_INSERT_FAILED'
-          })
-        );
-      }
-
-      trialRow = inserted;
-    }
-
-    const trialStart = new Date(trialRow.trial_started_at);
-    const trialExpiresAt = new Date(trialStart.getTime() + TRIAL_MINUTES * 60 * 1000);
-
-    const timeRemainingMs = trialExpiresAt.getTime() - now.getTime();
-    const timeExpired = timeRemainingMs <= 0;
-
-    const creditsUsed = trialRow.credits_used || 0;
-    const creditsRemaining = Math.max(TRIAL_CREDITS - creditsUsed, 0);
-    const creditsExhausted = creditsRemaining <= 0;
-
-    const trialActive = !timeExpired && !creditsExhausted;
-
-    // You can optionally update `last_seen_at` etc. here
-
-    // === 2. Return status ===
-    const responseMinutesLeft = Math.max(Math.ceil(timeRemainingMs / 60000), 0);
-
-    if (!trialActive) {
-      // Trial over – frontend should log out & show subscribe
+    if (!response.ok) {
+      console.error('[trial-status] Backend error:', response.status, response.statusText);
       return res.status(200).json(
         buildResponse({
-          ok: true,
+          ok: false,
           trialActive: false,
-          creditsRemaining,
-          creditsUsed,
-          trialExpiresAt: trialExpiresAt.toISOString(),
           minutesLeft: 0,
-          reason: timeExpired ? 'TRIAL_TIME_EXPIRED' : 'TRIAL_CREDITS_EXHAUSTED'
+          reason: response.status >= 500 ? 'BACKEND_ERROR' : 'BACKEND_UNAVAILABLE'
         })
       );
     }
 
-    // Trial is active
+    const backendData = await response.json();
+
+    const creditsRemaining = backendData.creditsLeft ?? backendData.credits ?? 0;
+    const minutesLeft = backendData.minutesLeft ?? 0;
+    const trialExpired = Boolean(backendData.trialExpired);
+    const trialActive = !trialExpired;
+    const isSubscribed = Boolean(backendData.isSubscribed);
+
+    let totalTrialCredits = backendData.totalTrialCredits;
+    if (totalTrialCredits == null && backendData.maxGenerations != null && backendData.creditsPerGenerate != null) {
+      totalTrialCredits = backendData.maxGenerations * backendData.creditsPerGenerate + creditsRemaining;
+    }
+
+    const creditsUsed = totalTrialCredits != null ? Math.max(totalTrialCredits - creditsRemaining, 0) : 0;
+
     return res.status(200).json(
       buildResponse({
         ok: true,
-        trialActive: true,
+        trialActive,
         creditsRemaining,
         creditsUsed,
-        trialExpiresAt: trialExpiresAt.toISOString(),
-        minutesLeft: responseMinutesLeft,
-        reason: null
+        minutesLeft,
+        trialExpiresAt: null,
+        isSubscribed,
+        totalTrialCredits,
+        reason: trialExpired ? 'TRIAL_EXPIRED' : null
       })
     );
   } catch (err) {
@@ -222,8 +157,8 @@ export default async function handler(req, res) {
       buildResponse({
         ok: false,
         trialActive: false,
-          minutesLeft: 0,
-        reason: 'UNEXPECTED_ERROR'
+        minutesLeft: 0,
+        reason: err.name === 'AbortError' ? 'BACKEND_TIMEOUT' : 'UNEXPECTED_ERROR'
       })
     );
   }

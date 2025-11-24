@@ -7,6 +7,7 @@ const fetch = require('node-fetch');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const fs = require('fs');
 let AbortControllerCtor = global.AbortController;
 try {
   if (!AbortControllerCtor) {
@@ -38,7 +39,13 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend/out')));
+const staticDir = path.join(__dirname, '../frontend/out');
+if (fs.existsSync(staticDir)) {
+  app.use(express.static(staticDir));
+  console.log(`🗂️ Serving static frontend from ${staticDir}`);
+} else {
+  console.log(`ℹ️ Static frontend directory not found at ${staticDir}; skipping static serving (expected in dev).`);
+}
 
 // Admin authentication middleware
 const authenticateAdmin = (req, res, next) => {
@@ -2771,10 +2778,12 @@ app.post('/admin/update-credits', authenticateAdmin, async (req, res) => {
 
 // ===== END ADMIN PANEL =====
 
-// Server startup for production deployment
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/out', 'index.html'));
-});
+// Server startup for production deployment (serve static frontend only when build output exists)
+if (fs.existsSync(staticDir)) {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  });
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -2796,7 +2805,6 @@ module.exports = app;
 module.exports = app;
 
 // --- ADMIN: migration & processed transactions management endpoints ---
-const fs = require('fs');
 const util = require('util');
 const exec = util.promisify(require('child_process').exec);
 

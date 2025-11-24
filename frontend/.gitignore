@@ -6,17 +6,14 @@ package-lock.json
 .env
 .env.local
 .env.production
-backend/.env
-frontend/.env.local
 
-# Next.js
-frontend/.next/
-frontend/out/
-frontend/build/
-
-# Electron
-dist/
+# Next.js build output
+.next/
+out/
 build/
+
+# Electron build output
+dist/
 release/
 
 # IDE
@@ -31,7 +28,7 @@ release/
 Thumbs.db
 *.log
 
-# Build files
+# Build artifacts
 *.exe
 *.dmg
 *.AppImage
